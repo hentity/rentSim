@@ -4,6 +4,7 @@ import csv
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 import random
+import os
 
 
 def generate_perlin_noise_csv(
@@ -61,7 +62,9 @@ def generate_perlin_noise_csv(
     noise_grid = (noise_grid - min_val) / (max_val - min_val)
 
     # write noise grid to a CSV file
-    with open(filename, mode="w", newline="") as file:
+    script_dir = os.path.dirname(__file__)
+    file_path = os.path.join(script_dir, filename)
+    with open(file_path, mode="w", newline="") as file:
         writer = csv.writer(file)
         for row in noise_grid:
             writer.writerow(row)
