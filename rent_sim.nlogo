@@ -9,8 +9,41 @@ globals [
   ; will compare with its own in deciding to move.
   visibility
 
-  ;; Length of occupancy records
+  ; Length of occupancy records
   record-length
+
+  ; The average satisfaction value of all
+  ; agents this tick
+  avg-satisfaction
+
+  ; The average satisfaction value for the
+  ; lower (1), middle (2) and upper (3)
+  ; thirds of agents by wealth this tick
+  avg-satisfaction1
+  avg-satisfaction2
+  avg-satisfaction3
+
+  ; The bottom, middle and upper third of
+  ; turtles by wealth
+  bottom-third
+  middle-third
+  upper-third
+
+  ; Number of agents that have moved away
+  ; due to low satisfaction
+  num-absent
+
+  ; Defines the satisfaction threshold
+  ; below which agents will move away
+  leave-threshold
+
+  ; A list of lists giving stats
+  ; at each timestep, to be exported
+  ; to csv for further analyis
+  stats
+
+  ; The list of stats this tick
+  curr-stats
 
   ; The upper limit on rent prices
   ; (prevents exponential explosion)
@@ -26,6 +59,11 @@ turtles-own [
   ; is with their current rent.
   ; Float in range [0,1]
   satisfaction
+
+  ; Boolean reprenting if a turtle
+  ; is present in the simulation
+  ; (has not moved away)
+  present?
 ]
 
 patches-own [
@@ -45,19 +83,12 @@ patches-own [
   ; A temporary variable used when updating rents
   next-rent
 
-  ; Represents the number of timesteps a
-  ; property has been vacant.
-  ; Integer >= 0
-  ;vacant-steps
-
   ; A list representing when the property
   ; has been occupied recently. Used to
   ; find the occupancy rate when calculating
   ; rent adjustments.
   occupancy-record
 
-  nearby-factor-var
-  vacancy-factor-var
 ]
 
 to setup
@@ -68,6 +99,8 @@ to setup
   set moving-cost 0
   set visibility 100
   set record-length 5
+  set num-absent 0
+  set leave-threshold -1
 
   ask patches [
     set vacant? true
@@ -75,6 +108,8 @@ to setup
     set occupancy-record (n-values record-length [0])
 
   ]
+
+  init-stats
 
   import-noise
 
@@ -84,29 +119,76 @@ to setup
   ; create turtles on random patches.
   ask patches [
 
+    let density 100 - vacancy-rate
     if random 100 < density [   ; set the occupancy density
       set vacant? false
       sprout 1 [
         set size 0.5
         set shape "circle"
         set wealth random-normal 0.5 0.3
+        set present? true
         ;set shape "person"
       ]
     ]
   ]
   recolor-turtles
 
-  ;update-turtles
-  update-globals
+  init-thirds
+
   reset-ticks
+end
+
+to init-stats
+  set stats [["tick" "avg-satisfaction" "avg-satisfaction1" "avg-satisfaction2" "avg-satisfaction3" "num-absent"]]
+end
+
+to init-thirds
+  ; Sort turtles by their wealth
+  let sorted-turtles sort-by [[t1 t2] -> [wealth] of t1 < [wealth] of t2] turtles
+
+  ; Divide the turtles into three equal groups based on wealth
+  let total-turtles count turtles
+  let third-count floor (total-turtles / 3)
+
+  set bottom-third sublist sorted-turtles 0 third-count
+  set middle-third sublist sorted-turtles third-count (2 * third-count)
+  set upper-third sublist sorted-turtles (2 * third-count) total-turtles
 end
 
 ; run the model for one tick
 to go
+  if ticks >= 100 [
+    write-stats
+    stop
+  ]
+
   update-turtles
   update-patches
   update-globals
+  update-stats
   tick
+end
+
+to update-turtles
+  ask turtles [
+    stay-or-move
+  ]
+  recolor-turtles
+end
+
+to update-patches
+  ask patches [
+    adjust-rent
+  ]
+  ask patches [
+    update-rent
+    update-occupancy-record
+  ]
+
+end
+
+to update-globals
+
 end
 
 to import-noise
@@ -114,6 +196,22 @@ to import-noise
   ask patches [
    set desirability (item (pycor + 25) (item (pxcor + 25) noise-list))
   ]
+end
+
+to update-stats
+  set avg-satisfaction mean [satisfaction] of turtles
+
+  set avg-satisfaction1 mean [satisfaction] of turtle-set bottom-third
+  set avg-satisfaction2 mean [satisfaction] of turtle-set middle-third
+  set avg-satisfaction3 mean [satisfaction] of turtle-set upper-third
+
+  set curr-stats (list ticks avg-satisfaction avg-satisfaction1 avg-satisfaction2 avg-satisfaction3 num-absent)
+
+  set stats (lput curr-stats stats)
+end
+
+to write-stats
+  csv:to-file "stats.csv" stats
 end
 
 to recolor-patches
@@ -191,30 +289,47 @@ end
 ; look for better properties and move if found
 to stay-or-move
   set satisfaction satisfaction-score self patch-here
-  if true ; satisfaction < sat-threshold
+  let max-score leave-threshold - 1
+  let dest one-of patches
+  if present? [
+    set dest patch-here
+    set max-score (moving-cost + satisfaction-score self patch-here)
+  ]
+
+  let n-vacant count patches with [vacant?]
+  set visibility min (list visibility n-vacant)
+  ask n-of visibility patches with [vacant?] [
+    let score satisfaction-score myself self
+    if score > max-score [
+      set dest self
+      set max-score score
+    ]
+  ]
+
+
+
+  ask patch-here [
+    set vacant? true
+  ]
+
+  ifelse max-score < leave-threshold [
+    if present? [
+      hide-turtle
+      set present? false
+      set num-absent num-absent + 1
+    ]
+  ]
   [
-    let dest patch-here
-    let prev-dest patch-here
-    let max-score (moving-cost + satisfaction-score self patch-here)
-    let n-vacant count patches with [vacant?]
-    set visibility min (list visibility n-vacant)
-    ask n-of visibility patches with [vacant?] [
-      let score satisfaction-score myself self
-      if score > max-score [
-        set dest self
-        set max-score score
-      ]
-    ]
-
-
-    ask patch-here [
-      set vacant? true
-    ]
     ask dest [
       set vacant? false
     ]
-
     move-to dest;
+
+    if not present? [
+      set present? true
+      show-turtle
+      set num-absent num-absent - 1
+    ]
   ]
 end
 
@@ -232,9 +347,6 @@ to-report rent-calc
   let nearby-rent mean [rent] of neighbors
   let nearby-factor 1 + (alpha * (nearby-rent - rent))
   let vacancy-factor 1 + (beta * ((sum occupancy-record) - (record-length / 2)))
-
-  set nearby-factor-var nearby-factor
-  set vacancy-factor-var vacancy-factor
 
   report  rent * nearby-factor * vacancy-factor
 end
@@ -260,37 +372,15 @@ to update-occupancy-record
   if vacant? [set occupancy 0]
   set occupancy-record lput occupancy but-first occupancy-record
 end
-
-to update-turtles
-  ask turtles [
-    stay-or-move
-  ]
-  recolor-turtles
-end
-
-to update-patches
-  ask patches [
-    adjust-rent
-  ]
-  ask patches [
-    update-rent
-    update-occupancy-record
-  ]
-
-end
-
-to update-globals
-
-end
 @#$#@#$#@
 GRAPHICS-WINDOW
 375
 10
-1184
-820
+1118
+754
 -1
 -1
-15.71
+14.412
 1
 10
 1
@@ -376,11 +466,11 @@ SLIDER
 10
 285
 43
-density
-density
+vacancy-rate
+vacancy-rate
 1
 100
-76.0
+20.0
 1
 1
 %
@@ -406,11 +496,49 @@ rent-limit
 rent-limit
 1
 16
-1.0
+5.0
 2
 1
 NIL
 HORIZONTAL
+
+PLOT
+25
+250
+355
+480
+Satisfaction
+Avg satisfaction
+Time
+0.0
+10.0
+-1.0
+1.0
+true
+true
+"" ""
+PENS
+"Lower" 1.0 0 -5298144 true "" "plot avg-satisfaction1"
+"Middle" 1.0 0 -4079321 true "" "plot avg-satisfaction2"
+"Upper" 1.0 0 -12087248 true "" "plot avg-satisfaction3"
+
+PLOT
+20
+510
+345
+660
+absent
+time
+num absent
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot num-absent"
 
 @#$#@#$#@
 ## WHAT IS IT?
