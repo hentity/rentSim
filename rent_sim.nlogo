@@ -77,7 +77,7 @@ patches-own [
   vacant?
 
   ; Represents the cost of rent for a property
-  ; Float in range [0,1]
+  ; Float in range [0,inf)
   rent
 
   ; A temporary variable used when updating rents
@@ -312,7 +312,7 @@ to stay-or-move
     set vacant? true
   ]
 
-  ifelse max-score < leave-threshold [
+  ifelse (max-score < leave-threshold) and can-leave? [
     if present? [
       hide-turtle
       set present? false
@@ -344,11 +344,11 @@ to-report rent-calc
   let alpha 0.1
   let beta 0.1
 
-  let nearby-rent mean [rent] of neighbors
-  let nearby-factor 1 + (alpha * (nearby-rent - rent))
+  ;let nearby-rent mean [rent] of neighbors
+  ;let nearby-factor 1 + (alpha * (nearby-rent - rent))
   let vacancy-factor 1 + (beta * ((sum occupancy-record) - (record-length / 2)))
 
-  report  rent * nearby-factor * vacancy-factor
+  report  rent * vacancy-factor ; * nearby-factor
 end
 
 to adjust-rent
@@ -356,7 +356,7 @@ to adjust-rent
   if new-rent < 0.01 [
     set new-rent 0.01
   ]
-  if new-rent > rent-limit [
+  if (new-rent > rent-limit) and do-limit? [
     set new-rent rent-limit
   ]
 
@@ -451,16 +451,6 @@ NIL
 NIL
 0
 
-CHOOSER
-115
-105
-264
-150
-visualization
-visualization
-"old" "square-x"
-1
-
 SLIDER
 10
 10
@@ -470,7 +460,7 @@ vacancy-rate
 vacancy-rate
 1
 100
-20.0
+68.0
 1
 1
 %
@@ -508,8 +498,8 @@ PLOT
 355
 480
 Satisfaction
-Avg satisfaction
 Time
+Avg satisfaction
 0.0
 10.0
 -1.0
@@ -539,6 +529,28 @@ false
 "" ""
 PENS
 "default" 1.0 0 -16777216 true "" "plot num-absent"
+
+SWITCH
+200
+170
+312
+203
+do-limit?
+do-limit?
+1
+1
+-1000
+
+SWITCH
+200
+125
+322
+158
+can-leave?
+can-leave?
+1
+1
+-1000
 
 @#$#@#$#@
 ## WHAT IS IT?
