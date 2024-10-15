@@ -157,7 +157,7 @@ end
 
 ; run the model for one tick
 to go
-  if ticks >= 100 [
+  if ticks >= sim-length [
     write-stats
     stop
   ]
@@ -460,7 +460,7 @@ vacancy-rate
 vacancy-rate
 1
 100
-68.0
+5.0
 1
 1
 %
@@ -486,8 +486,8 @@ rent-limit
 rent-limit
 1
 16
-5.0
-2
+2.0
+1
 1
 NIL
 HORIZONTAL
@@ -537,7 +537,7 @@ SWITCH
 203
 do-limit?
 do-limit?
-1
+0
 1
 -1000
 
@@ -551,6 +551,17 @@ can-leave?
 1
 1
 -1000
+
+INPUTBOX
+105
+105
+195
+165
+sim-length
+300.0
+1
+0
+Number
 
 @#$#@#$#@
 ## WHAT IS IT?
